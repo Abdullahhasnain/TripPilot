@@ -1,36 +1,130 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+ # ✈️ TripPilot
 
-## Getting Started
+TripPilot is an AI-powered travel planning platform that helps users create personalized trips based on their destination, duration, travelers, origin, and budget.
 
-First, run the development server:
+It combines AI trip planning with real-world travel research so users can explore researched hotels, attractions, activities, restaurants, and transportation options before building their final itinerary.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+---
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🌍 Features
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- 🤖 AI-powered trip planning
+- 💰 Budget-aware itineraries
+- 🗺️ Destination-based travel planning
+- 👥 Multiple travelers support
+- ✈️ Flight planning
+- 🏨 Hotel recommendations
+- 🎟️ Attraction research
+- 🎯 Activity recommendations
+- 🍽️ Restaurant research
+- 🚆 Local transportation research
+- 🔎 Real-world web research
+- 🔗 Source links for researched options
+- 🔐 Google authentication with Clerk
+- 💬 Multi-turn trip planning conversation
+- 📱 Responsive modern UI
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## 🧠 How TripPilot Works
 
-To learn more about Next.js, take a look at the following resources:
+### 1. Tell TripPilot about your trip
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Users can provide information naturally, for example:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+> I want to visit Berlin, Germany for 5 days, for 2 people, from Karachi, with a budget of Rs. 300,000.
 
-## Deploy on Vercel
+TripPilot understands the request and extracts the important travel details.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 2. AI creates an initial plan
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Groq generates a personalized trip plan including:
+
+- Destination
+- Duration
+- Travelers
+- Estimated budget
+- Hotel recommendation
+- Budget breakdown
+- Day-by-day itinerary
+- Activities
+- Travel notes
+- Assumptions
+
+### 3. Research real travel options
+
+TripPilot uses Firecrawl to research publicly available travel information from the web.
+
+Research categories include:
+
+- Hotels
+- Attractions
+- Activities
+- Restaurants
+- Transportation
+- Travel information
+
+Each researched option includes its original source when available.
+
+### 4. Choose what you like
+
+Users can select researched hotels, attractions, activities, and other options.
+
+### 5. Final itinerary optimization
+
+The selected options can be used by the AI to build a personalized final itinerary around the user's budget and preferences.
+
+---
+
+## 🛠️ Tech Stack
+
+### Frontend
+
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+- Lucide React
+- Framer Motion
+
+### AI
+
+- Groq API
+- `openai/gpt-oss-20b`
+
+### Web Research
+
+- Firecrawl
+
+### Authentication
+
+- Clerk
+- Google Sign-In
+
+---
+
+## 📁 Project Structure
+
+```text
+ai-travel-agent/
+│
+├── app/
+│   ├── api/
+│   │   ├── plan-trip/
+│   │   │   └── route.ts
+│   │   │
+│   │   └── research/
+│   │       └── route.ts
+│   │
+│   ├── icon.png
+│   ├── layout.tsx
+│   ├── page.tsx
+│   └── globals.css
+│
+├── public/
+│
+├── proxy.ts
+├── package.json
+├── tsconfig.json
+├── next.config.ts
+└── README.md
