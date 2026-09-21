@@ -24,3 +24,66 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+/* TripPilot full-page background */
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background-image: url("/travel-background.png") !important;
+  background-position: center center !important;
+  background-size: cover !important;
+  background-attachment: fixed !important;
+  background-repeat: no-repeat !important;
+}
+
+/* TripPilot page background layers */
+main > section {
+  background-color: transparent !important;
+}
+
+main > section > div {
+  background-color: transparent;
+}
+
+/* TripPilot - fix lower section text visibility */
+main > section {
+  color: #FFFFFF !important;
+}
+
+main > section h1,
+main > section h2,
+main > section h3,
+main > section h4 {
+  color: #FFFFFF !important;
+}
+
+main > section p,
+main > section span,
+main > section li {
+  color: #FFFFFF !important;
+}
+
+/* Yellow accent */
+main > section .text-slate-500,
+main > section .text-slate-600,
+main > section .text-slate-700 {
+  color: #FFD166 !important;
+}
+
+/* Demo trip cards stay readable */
+main > section [class*="bg-white"] p,
+main > section [class*="bg-white"] span,
+main > section [class*="bg-white"] h1,
+main > section [class*="bg-white"] h2,
+main > section [class*="bg-white"] h3 {
+  color: #0B2A45 !important;
+}
+
+/* Hero feature badges */
+.hero-section span.rounded-full {
+  color: #0B2A45 !important;
+  background: #FFFFFF !important;
+  opacity: 1 !important;
+}

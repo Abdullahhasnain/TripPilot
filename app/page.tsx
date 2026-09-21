@@ -25,7 +25,6 @@ import {
 
 type TripPlan = {
   status?: string;
-
   destination?: string;
   duration?: string;
   travelers?: number;
@@ -151,18 +150,59 @@ type ResearchData = {
   travel_tips?: string[];
 };
 
+type FinalItinerary = {
+  status?: string;
+  title?: string;
+  destination?: string;
+  duration_days?: number;
+  travelers?: number;
+  budget?: string;
+  estimated_total?: string;
+
+  selected_options?: {
+    hotel?: ResearchHotel | null;
+    flight?: ResearchFlight | null;
+    attractions?: ResearchAttraction[];
+    activities?: ResearchActivity[];
+  };
+
+  budget_breakdown?: {
+    category?: string;
+    estimated_cost?: string;
+  }[];
+
+  itinerary?: {
+    day: number;
+    title: string;
+    activities?: {
+      time?: string;
+      activity?: string;
+      estimated_cost?: string;
+    }[];
+  }[];
+
+  optimization_notes?: string[];
+  travel_notes?: string[];
+};
+
 export default function Home() {
   const [message, setMessage] = useState("");
+  const [showPlanner, setShowPlanner] = useState(false);
   const [tripPlan, setTripPlan] = useState<TripPlan | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [researchLoading, setResearchLoading] = useState(false);
+  const [finalLoading, setFinalLoading] = useState(false);
 
   const [error, setError] = useState("");
   const [researchError, setResearchError] = useState("");
+  const [finalError, setFinalError] = useState("");
 
   const [research, setResearch] =
     useState<ResearchData | null>(null);
+
+  const [finalItinerary, setFinalItinerary] =
+    useState<FinalItinerary | null>(null);
 
   const [selectedHotel, setSelectedHotel] =
     useState<ResearchHotel | null>(null);
@@ -195,9 +235,14 @@ export default function Home() {
     setMessage("");
     setTripPlan(null);
     setResearch(null);
+    setFinalItinerary(null);
+
     setError("");
     setResearchError("");
+    setFinalError("");
+
     setResearchLoading(false);
+    setFinalLoading(false);
 
     setSelectedHotel(null);
     setSelectedFlight(null);
@@ -233,7 +278,8 @@ export default function Home() {
 
       if (!response.ok) {
         throw new Error(
-          data.error || "Unable to research travel options."
+          data.error ||
+            "Unable to research travel options."
         );
       }
 
@@ -296,7 +342,9 @@ export default function Home() {
     });
   };
 
-  const handlePlanTrip = async (e: FormEvent) => {
+  const handlePlanTrip = async (
+    e: FormEvent
+  ) => {
     e.preventDefault();
 
     const trimmedMessage = message.trim();
@@ -307,24 +355,30 @@ export default function Home() {
 
     setLoading(true);
     setError("");
+    setFinalItinerary(null);
+    setFinalError("");
 
     try {
-      const response = await fetch("/api/plan-trip", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: trimmedMessage,
-          conversation,
-        }),
-      });
+      const response = await fetch(
+        "/api/plan-trip",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: trimmedMessage,
+            conversation,
+          }),
+        }
+      );
 
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          data.error || "Something went wrong."
+          data.error ||
+            "Something went wrong."
         );
       }
 
@@ -371,8 +425,65 @@ export default function Home() {
     }
   };
 
+  const handleBuildFinalItinerary =
+    async () => {
+      if (!tripPlan || finalLoading) {
+        return;
+      }
+
+      setFinalLoading(true);
+      setFinalError("");
+
+      try {
+        const response = await fetch(
+          "/api/final-itinerary",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              tripPlan,
+              selectedHotel,
+              selectedFlight,
+              selectedAttractions,
+              selectedActivities,
+            }),
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error ||
+              "Unable to build final itinerary."
+          );
+        }
+
+        setFinalItinerary(
+          data.itinerary || null
+        );
+
+        setTimeout(() => {
+          window.scrollTo({
+            top: document.body.scrollHeight,
+            behavior: "smooth",
+          });
+        }, 150);
+      } catch (err) {
+        setFinalError(
+          err instanceof Error
+            ? err.message
+            : "Unable to build final itinerary."
+        );
+      } finally {
+        setFinalLoading(false);
+      }
+    };
+
   return (
-    <main className="min-h-screen bg-white text-slate-950">
+    <main className="min-h-screen bg-transparent text-slate-950">
 
       {/* NAVBAR */}
       <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
@@ -456,7 +567,9 @@ export default function Home() {
 
           <button
             onClick={() =>
-              setMobileMenu((value) => !value)
+              setMobileMenu(
+                (value) => !value
+              )
             }
             className="rounded-xl p-2 text-slate-700 hover:bg-slate-100 md:hidden"
             aria-label="Toggle menu"
@@ -538,7 +651,7 @@ export default function Home() {
       </header>
 
       {/* HERO */}
-      <section className="relative overflow-hidden">
+      <section className="hero-section relative overflow-hidden">
 
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_right,rgba(226,232,240,0.7),transparent_35%),radial-gradient(circle_at_top_left,rgba(241,245,249,0.9),transparent_30%)]" />
 
@@ -551,19 +664,38 @@ export default function Home() {
               AI-powered travel planning
             </div>
 
-            <h1 className="max-w-3xl text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
+            <h1 className="max-w-3xl text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
               Plan your entire trip
-              <span className="block text-slate-500">
+              <span className="block text-[#FFD166]">
                 with AI.
               </span>
             </h1>
 
-            <p className="mt-6 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
+            <p className="mt-6 max-w-2xl text-base leading-7 text-white sm:text-lg">
               Tell us where you want to go.
               TripPilot builds a personalized
               itinerary around your destination,
               travelers and budget.
             </p>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowPlanner(true);
+                setTimeout(() => {
+                  document
+                    .getElementById("planner")
+                    ?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "center",
+                    });
+                }, 50);
+              }}
+              className="mt-8 inline-flex items-center gap-2 rounded-2xl bg-white px-6 py-3.5 text-sm font-bold text-[#0B2A45] shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl"
+            >
+              Plan my trip
+              <ArrowRight size={17} />
+            </button>
 
             <div className="mt-8 flex flex-wrap gap-3 text-xs font-semibold text-slate-600">
 
@@ -583,7 +715,7 @@ export default function Home() {
 
           </div>
 
-          {/* PLANNER */}
+          {showPlanner && (
           <div
             id="planner"
             className="scroll-mt-24 rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_25px_70px_rgba(15,23,42,0.10)] sm:p-7"
@@ -602,7 +734,9 @@ export default function Home() {
 
             </div>
 
-            <form onSubmit={handlePlanTrip}>
+            <form
+              onSubmit={handlePlanTrip}
+            >
 
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2">
 
@@ -625,7 +759,8 @@ export default function Home() {
                   <button
                     type="submit"
                     disabled={
-                      loading || !message.trim()
+                      loading ||
+                      !message.trim()
                     }
                     className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -641,7 +776,9 @@ export default function Home() {
                     ) : (
                       <>
                         Plan my trip
-                        <ArrowRight size={16} />
+                        <ArrowRight
+                          size={16}
+                        />
                       </>
                     )}
 
@@ -692,6 +829,7 @@ export default function Home() {
 
           </div>
 
+          )}
         </div>
 
       </section>
@@ -749,7 +887,8 @@ export default function Home() {
                 </p>
 
                 <p className="mt-1 font-semibold">
-                  {tripPlan.destination || "—"}
+                  {tripPlan.destination ||
+                    "—"}
                 </p>
 
               </div>
@@ -765,7 +904,8 @@ export default function Home() {
                 </p>
 
                 <p className="mt-1 font-semibold">
-                  {tripPlan.duration || "—"}
+                  {tripPlan.duration ||
+                    "—"}
                 </p>
 
               </div>
@@ -781,7 +921,8 @@ export default function Home() {
                 </p>
 
                 <p className="mt-1 font-semibold">
-                  {tripPlan.travelers || "—"}
+                  {tripPlan.travelers ||
+                    "—"}
                 </p>
 
               </div>
@@ -797,7 +938,8 @@ export default function Home() {
                 </p>
 
                 <p className="mt-1 font-semibold">
-                  {tripPlan.estimated_total || "—"}
+                  {tripPlan.estimated_total ||
+                    "—"}
                 </p>
 
               </div>
@@ -1236,638 +1378,1170 @@ export default function Home() {
               )}
 
               {/* RESEARCH ERROR */}
-              {researchError && !researchLoading && (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+              {researchError &&
+                !researchLoading && (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
 
-                  <p className="font-semibold text-amber-900">
-                    Research could not be completed
+                    <p className="font-semibold text-amber-900">
+                      Research could not be completed
+                    </p>
+
+                    <p className="mt-1 text-sm text-amber-800">
+                      {researchError}
+                    </p>
+
+                  </div>
+                )}
+
+              {/* RESEARCH RESULTS */}
+              {research &&
+                !researchLoading && (
+                  <div className="space-y-8">
+
+                    {/* HOTELS */}
+                    {research.hotels &&
+                      research.hotels.length > 0 && (
+                        <div>
+
+                          <div className="mb-4 flex items-center gap-3">
+
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white">
+                              <Hotel size={19} />
+                            </div>
+
+                            <div>
+
+                              <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                                Stay
+                              </p>
+
+                              <h4 className="text-xl font-bold">
+                                Hotel options
+                              </h4>
+
+                            </div>
+
+                          </div>
+
+                          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+
+                            {research.hotels.map(
+                              (
+                                hotel,
+                                index
+                              ) => {
+
+                                const selected =
+                                  selectedHotel?.name ===
+                                  hotel.name;
+
+                                return (
+                                  <div
+                                    key={`${hotel.name}-${index}`}
+                                    className={`rounded-2xl border bg-white p-5 transition ${
+                                      selected
+                                        ? "border-slate-950 ring-2 ring-slate-950/10"
+                                        : "border-slate-200"
+                                    }`}
+                                  >
+
+                                    <div className="flex items-start justify-between gap-3">
+
+                                      <div>
+
+                                        <h5 className="font-bold">
+                                          {hotel.name ||
+                                            "Hotel option"}
+                                        </h5>
+
+                                        {hotel.location && (
+                                          <p className="mt-1 text-xs text-slate-500">
+                                            {hotel.location}
+                                          </p>
+                                        )}
+
+                                      </div>
+
+                                      {selected && (
+                                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white">
+                                          <Check
+                                            size={14}
+                                          />
+                                        </div>
+                                      )}
+
+                                    </div>
+
+                                    {hotel.rating && (
+                                      <p className="mt-3 text-sm font-semibold">
+                                        Rating:{" "}
+                                        {hotel.rating}
+                                      </p>
+                                    )}
+
+                                    {hotel.price && (
+                                      <p className="mt-2 text-sm font-semibold text-slate-700">
+                                        Source-listed price:{" "}
+                                        {hotel.price}
+                                      </p>
+                                    )}
+
+                                    {hotel.description && (
+                                      <p className="mt-3 text-sm leading-6 text-slate-600">
+                                        {hotel.description}
+                                      </p>
+                                    )}
+
+                                    <div className="mt-5 flex flex-wrap gap-2">
+
+                                      <button
+                                        onClick={() =>
+                                          setSelectedHotel(
+                                            selected
+                                              ? null
+                                              : hotel
+                                          )
+                                        }
+                                        className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                                          selected
+                                            ? "bg-slate-200 text-slate-900"
+                                            : "bg-slate-950 text-white hover:bg-slate-800"
+                                        }`}
+                                      >
+                                        {selected
+                                          ? "Selected"
+                                          : "Select hotel"}
+                                      </button>
+
+                                      {hotel.source_url && (
+                                        <a
+                                          href={
+                                            hotel.source_url
+                                          }
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                        >
+                                          View source
+                                        </a>
+                                      )}
+
+                                    </div>
+
+                                  </div>
+                                );
+                              }
+                            )}
+
+                          </div>
+
+                        </div>
+                      )}
+
+                    {/* FLIGHTS */}
+                    {research.flights &&
+                      research.flights.length > 0 && (
+                        <div>
+
+                          <div className="mb-4 flex items-center gap-3">
+
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white">
+                              <Plane size={19} />
+                            </div>
+
+                            <div>
+
+                              <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                                Air travel
+                              </p>
+
+                              <h4 className="text-xl font-bold">
+                                Flight options
+                              </h4>
+
+                            </div>
+
+                          </div>
+
+                          <div className="grid gap-4 lg:grid-cols-2">
+
+                            {research.flights.map(
+                              (
+                                flight,
+                                index
+                              ) => {
+
+                                const selected =
+                                  selectedFlight?.airline ===
+                                    flight.airline &&
+                                  selectedFlight?.route ===
+                                    flight.route;
+
+                                return (
+                                  <div
+                                    key={`${flight.airline}-${flight.route}-${index}`}
+                                    className={`rounded-2xl border bg-white p-5 ${
+                                      selected
+                                        ? "border-slate-950 ring-2 ring-slate-950/10"
+                                        : "border-slate-200"
+                                    }`}
+                                  >
+
+                                    <div className="flex items-start justify-between gap-4">
+
+                                      <div>
+
+                                        <h5 className="font-bold">
+                                          {flight.airline ||
+                                            "Flight option"}
+                                        </h5>
+
+                                        {flight.route && (
+                                          <p className="mt-1 text-sm text-slate-600">
+                                            {flight.route}
+                                          </p>
+                                        )}
+
+                                      </div>
+
+                                      {selected && (
+                                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-950 text-white">
+                                          <Check
+                                            size={14}
+                                          />
+                                        </div>
+                                      )}
+
+                                    </div>
+
+                                    <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+
+                                      {flight.duration && (
+                                        <p className="text-slate-600">
+                                          <span className="font-semibold text-slate-900">
+                                            Duration:
+                                          </span>{" "}
+                                          {flight.duration}
+                                        </p>
+                                      )}
+
+                                      {flight.stops && (
+                                        <p className="text-slate-600">
+                                          <span className="font-semibold text-slate-900">
+                                            Stops:
+                                          </span>{" "}
+                                          {flight.stops}
+                                        </p>
+                                      )}
+
+                                      {flight.price && (
+                                        <p className="text-slate-600">
+                                          <span className="font-semibold text-slate-900">
+                                            Price:
+                                          </span>{" "}
+                                          {flight.price}
+                                        </p>
+                                      )}
+
+                                      {flight.baggage && (
+                                        <p className="text-slate-600">
+                                          <span className="font-semibold text-slate-900">
+                                            Baggage:
+                                          </span>{" "}
+                                          {flight.baggage}
+                                        </p>
+                                      )}
+
+                                    </div>
+
+                                    <div className="mt-5 flex flex-wrap gap-2">
+
+                                      <button
+                                        onClick={() =>
+                                          setSelectedFlight(
+                                            selected
+                                              ? null
+                                              : flight
+                                          )
+                                        }
+                                        className={`rounded-xl px-4 py-2 text-sm font-semibold ${
+                                          selected
+                                            ? "bg-slate-200 text-slate-900"
+                                            : "bg-slate-950 text-white hover:bg-slate-800"
+                                        }`}
+                                      >
+                                        {selected
+                                          ? "Selected"
+                                          : "Select flight"}
+                                      </button>
+
+                                      {flight.source_url && (
+                                        <a
+                                          href={
+                                            flight.source_url
+                                          }
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                        >
+                                          View source
+                                        </a>
+                                      )}
+
+                                    </div>
+
+                                  </div>
+                                );
+                              }
+                            )}
+
+                          </div>
+
+                        </div>
+                      )}
+
+                    {/* ATTRACTIONS */}
+                    {research.attractions &&
+                      research.attractions.length > 0 && (
+                        <div>
+
+                          <div className="mb-4">
+
+                            <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                              Places
+                            </p>
+
+                            <h4 className="text-xl font-bold">
+                              Attractions
+                            </h4>
+
+                          </div>
+
+                          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+
+                            {research.attractions.map(
+                              (
+                                attraction,
+                                index
+                              ) => {
+
+                                const selected =
+                                  selectedAttractions.some(
+                                    (item) =>
+                                      item.name ===
+                                      attraction.name
+                                  );
+
+                                return (
+                                  <div
+                                    key={`${attraction.name}-${index}`}
+                                    className={`rounded-2xl border bg-white p-5 ${
+                                      selected
+                                        ? "border-slate-950 ring-2 ring-slate-950/10"
+                                        : "border-slate-200"
+                                    }`}
+                                  >
+
+                                    <div className="flex items-start justify-between gap-3">
+
+                                      <h5 className="font-bold">
+                                        {attraction.name ||
+                                          "Attraction"}
+                                      </h5>
+
+                                      {selected && (
+                                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white">
+                                          <Check
+                                            size={14}
+                                          />
+                                        </div>
+                                      )}
+
+                                    </div>
+
+                                    {attraction.description && (
+                                      <p className="mt-3 text-sm leading-6 text-slate-600">
+                                        {attraction.description}
+                                      </p>
+                                    )}
+
+                                    <div className="mt-4 space-y-2 text-xs text-slate-500">
+
+                                      {attraction.ticket_price && (
+                                        <p>
+                                          Ticket:{" "}
+                                          {
+                                            attraction.ticket_price
+                                          }
+                                        </p>
+                                      )}
+
+                                      {attraction.opening_info && (
+                                        <p>
+                                          Opening:{" "}
+                                          {
+                                            attraction.opening_info
+                                          }
+                                        </p>
+                                      )}
+
+                                      {attraction.recommended_time && (
+                                        <p>
+                                          Recommended time:{" "}
+                                          {
+                                            attraction.recommended_time
+                                          }
+                                        </p>
+                                      )}
+
+                                    </div>
+
+                                    <div className="mt-5 flex flex-wrap gap-2">
+
+                                      <button
+                                        onClick={() =>
+                                          toggleAttraction(
+                                            attraction
+                                          )
+                                        }
+                                        className={`rounded-xl px-4 py-2 text-sm font-semibold ${
+                                          selected
+                                            ? "bg-slate-200 text-slate-900"
+                                            : "bg-slate-950 text-white hover:bg-slate-800"
+                                        }`}
+                                      >
+                                        {selected
+                                          ? "Selected"
+                                          : "Select place"}
+                                      </button>
+
+                                      {attraction.source_url && (
+                                        <a
+                                          href={
+                                            attraction.source_url
+                                          }
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                        >
+                                          Source
+                                        </a>
+                                      )}
+
+                                    </div>
+
+                                  </div>
+                                );
+                              }
+                            )}
+
+                          </div>
+
+                        </div>
+                      )}
+
+                    {/* ACTIVITIES */}
+                    {research.activities &&
+                      research.activities.length > 0 && (
+                        <div>
+
+                          <div className="mb-4">
+
+                            <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                              Experiences
+                            </p>
+
+                            <h4 className="text-xl font-bold">
+                              Tours & activities
+                            </h4>
+
+                          </div>
+
+                          <div className="grid gap-4 md:grid-cols-2">
+
+                            {research.activities.map(
+                              (
+                                activity,
+                                index
+                              ) => {
+
+                                const selected =
+                                  selectedActivities.some(
+                                    (item) =>
+                                      item.name ===
+                                      activity.name
+                                  );
+
+                                return (
+                                  <div
+                                    key={`${activity.name}-${index}`}
+                                    className={`rounded-2xl border bg-white p-5 ${
+                                      selected
+                                        ? "border-slate-950 ring-2 ring-slate-950/10"
+                                        : "border-slate-200"
+                                    }`}
+                                  >
+
+                                    <div className="flex items-start justify-between gap-3">
+
+                                      <h5 className="font-bold">
+                                        {activity.name ||
+                                          "Activity"}
+                                      </h5>
+
+                                      {selected && (
+                                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white">
+                                          <Check
+                                            size={14}
+                                          />
+                                        </div>
+                                      )}
+
+                                    </div>
+
+                                    {activity.description && (
+                                      <p className="mt-3 text-sm leading-6 text-slate-600">
+                                        {activity.description}
+                                      </p>
+                                    )}
+
+                                    {activity.price && (
+                                      <p className="mt-3 text-sm font-semibold text-slate-700">
+                                        Source-listed price:{" "}
+                                        {activity.price}
+                                      </p>
+                                    )}
+
+                                    <div className="mt-5 flex flex-wrap gap-2">
+
+                                      <button
+                                        onClick={() =>
+                                          toggleActivity(
+                                            activity
+                                          )
+                                        }
+                                        className={`rounded-xl px-4 py-2 text-sm font-semibold ${
+                                          selected
+                                            ? "bg-slate-200 text-slate-900"
+                                            : "bg-slate-950 text-white hover:bg-slate-800"
+                                        }`}
+                                      >
+                                        {selected
+                                          ? "Selected"
+                                          : "Select activity"}
+                                      </button>
+
+                                      {activity.source_url && (
+                                        <a
+                                          href={
+                                            activity.source_url
+                                          }
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                        >
+                                          Source
+                                        </a>
+                                      )}
+
+                                    </div>
+
+                                  </div>
+                                );
+                              }
+                            )}
+
+                          </div>
+
+                        </div>
+                      )}
+
+                    {/* RESTAURANTS */}
+                    {research.restaurants &&
+                      research.restaurants.length > 0 && (
+                        <div>
+
+                          <div className="mb-4">
+
+                            <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                              Food
+                            </p>
+
+                            <h4 className="text-xl font-bold">
+                              Restaurant options
+                            </h4>
+
+                          </div>
+
+                          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+
+                            {research.restaurants.map(
+                              (
+                                restaurant,
+                                index
+                              ) => (
+                                <div
+                                  key={`${restaurant.name}-${index}`}
+                                  className="rounded-2xl border border-slate-200 bg-white p-5"
+                                >
+
+                                  <h5 className="font-bold">
+                                    {restaurant.name ||
+                                      "Restaurant"}
+                                  </h5>
+
+                                  {restaurant.description && (
+                                    <p className="mt-3 text-sm leading-6 text-slate-600">
+                                      {restaurant.description}
+                                    </p>
+                                  )}
+
+                                  {restaurant.price_level && (
+                                    <p className="mt-3 text-xs font-semibold text-slate-500">
+                                      Price level:{" "}
+                                      {
+                                        restaurant.price_level
+                                      }
+                                    </p>
+                                  )}
+
+                                  {restaurant.source_url && (
+                                    <a
+                                      href={
+                                        restaurant.source_url
+                                      }
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="mt-4 inline-flex rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                      View source
+                                    </a>
+                                  )}
+
+                                </div>
+                              )
+                            )}
+
+                          </div>
+
+                        </div>
+                      )}
+
+                    {/* TRANSPORT */}
+                    {research.transport &&
+                      research.transport.length > 0 && (
+                        <div>
+
+                          <div className="mb-4">
+
+                            <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                              Getting around
+                            </p>
+
+                            <h4 className="text-xl font-bold">
+                              Transport options
+                            </h4>
+
+                          </div>
+
+                          <div className="grid gap-4 md:grid-cols-2">
+
+                            {research.transport.map(
+                              (
+                                transport,
+                                index
+                              ) => (
+                                <div
+                                  key={`${transport.name}-${index}`}
+                                  className="rounded-2xl border border-slate-200 bg-white p-5"
+                                >
+
+                                  <h5 className="font-bold">
+                                    {transport.name ||
+                                      "Transport option"}
+                                  </h5>
+
+                                  {transport.description && (
+                                    <p className="mt-3 text-sm leading-6 text-slate-600">
+                                      {transport.description}
+                                    </p>
+                                  )}
+
+                                  {transport.price && (
+                                    <p className="mt-3 text-sm font-semibold text-slate-700">
+                                      Source-listed price:{" "}
+                                      {transport.price}
+                                    </p>
+                                  )}
+
+                                  {transport.source_url && (
+                                    <a
+                                      href={
+                                        transport.source_url
+                                      }
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="mt-4 inline-flex rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                      View source
+                                    </a>
+                                  )}
+
+                                </div>
+                              )
+                            )}
+
+                          </div>
+
+                        </div>
+                      )}
+
+                    {/* TRAVEL TIPS */}
+                    {research.travel_tips &&
+                      research.travel_tips.length > 0 && (
+                        <div className="rounded-2xl border border-slate-200 bg-white p-6">
+
+                          <div className="flex items-center gap-3">
+
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
+                              <Sparkles size={19} />
+                            </div>
+
+                            <div>
+
+                              <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                                Research notes
+                              </p>
+
+                              <h4 className="font-bold">
+                                Travel tips
+                              </h4>
+
+                            </div>
+
+                          </div>
+
+                          <ul className="mt-5 space-y-3">
+
+                            {research.travel_tips.map(
+                              (tip, index) => (
+                                <li
+                                  key={index}
+                                  className="flex gap-3 text-sm leading-6 text-slate-600"
+                                >
+                                  <Check
+                                    size={16}
+                                    className="mt-1 shrink-0"
+                                  />
+                                  {tip}
+                                </li>
+                              )
+                            )}
+
+                          </ul>
+
+                        </div>
+                      )}
+
+                    {/* SELECTION SUMMARY */}
+                    {(selectedHotel ||
+                      selectedFlight ||
+                      selectedAttractions.length >
+                        0 ||
+                      selectedActivities.length >
+                        0) && (
+                      <div className="rounded-2xl border border-slate-950 bg-slate-950 p-6 text-white">
+
+                        <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+                          Your selections
+                        </p>
+
+                        <h4 className="mt-2 text-xl font-bold">
+                          Ready to build your final trip
+                        </h4>
+
+                        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+
+                          {selectedFlight && (
+                            <div className="rounded-xl bg-white/10 p-4">
+                              <p className="text-xs text-slate-400">
+                                Flight
+                              </p>
+
+                              <p className="mt-1 text-sm font-semibold">
+                                {selectedFlight.airline ||
+                                  "Selected flight"}
+                              </p>
+                            </div>
+                          )}
+
+                          {selectedHotel && (
+                            <div className="rounded-xl bg-white/10 p-4">
+                              <p className="text-xs text-slate-400">
+                                Hotel
+                              </p>
+
+                              <p className="mt-1 text-sm font-semibold">
+                                {selectedHotel.name ||
+                                  "Selected hotel"}
+                              </p>
+                            </div>
+                          )}
+
+                          {selectedAttractions.length >
+                            0 && (
+                            <div className="rounded-xl bg-white/10 p-4">
+                              <p className="text-xs text-slate-400">
+                                Places
+                              </p>
+
+                              <p className="mt-1 text-sm font-semibold">
+                                {
+                                  selectedAttractions.length
+                                }{" "}
+                                selected
+                              </p>
+                            </div>
+                          )}
+
+                          {selectedActivities.length >
+                            0 && (
+                            <div className="rounded-xl bg-white/10 p-4">
+                              <p className="text-xs text-slate-400">
+                                Activities
+                              </p>
+
+                              <p className="mt-1 text-sm font-semibold">
+                                {
+                                  selectedActivities.length
+                                }{" "}
+                                selected
+                              </p>
+                            </div>
+                          )}
+
+                        </div>
+
+                        <button
+                          onClick={
+                            handleBuildFinalItinerary
+                          }
+                          disabled={
+                            finalLoading
+                          }
+                          className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                        >
+
+                          {finalLoading ? (
+                            <>
+                              <Loader2
+                                size={17}
+                                className="animate-spin"
+                              />
+                              Optimizing your trip...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles
+                                size={17}
+                              />
+                              Build My Final Itinerary
+                              <ArrowRight
+                                size={16}
+                              />
+                            </>
+                          )}
+
+                        </button>
+
+                        <p className="mt-4 text-xs leading-5 text-slate-400">
+                          TripPilot will use your selections
+                          and original budget to optimize the
+                          final itinerary. Prices and
+                          availability are not guaranteed bookings.
+                        </p>
+
+                      </div>
+                    )}
+
+                  </div>
+                )}
+
+              {/* FINAL ERROR */}
+              {finalError && (
+                <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5">
+
+                  <p className="font-semibold text-red-900">
+                    Final itinerary could not be built
                   </p>
 
-                  <p className="mt-1 text-sm text-amber-800">
-                    {researchError}
+                  <p className="mt-1 text-sm text-red-700">
+                    {finalError}
                   </p>
 
                 </div>
               )}
 
-              {/* RESEARCH RESULTS */}
-              {research && !researchLoading && (
+              {/* FINAL ITINERARY */}
+              {finalItinerary && (
+                <div className="mt-10">
 
-                <div className="space-y-8">
+                  <div className="rounded-3xl border border-slate-950 bg-slate-950 p-6 text-white sm:p-8">
 
-                  {/* HOTELS */}
-                  {research.hotels &&
-                    research.hotels.length > 0 && (
+                    <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+
                       <div>
 
-                        <div className="mb-4 flex items-center gap-3">
+                        <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-300">
+                          <Sparkles
+                            size={14}
+                          />
+                          AI optimized
+                        </div>
 
-                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white">
-                            <Hotel size={19} />
+                        <h3 className="mt-4 text-2xl font-bold sm:text-3xl">
+                          {finalItinerary.title ||
+                            "Your final optimized itinerary"}
+                        </h3>
+
+                        <p className="mt-2 text-sm text-slate-400">
+                          {finalItinerary.destination ||
+                            tripPlan.destination ||
+                            "Your trip"}
+
+                          {finalItinerary.duration_days
+                            ? ` · ${finalItinerary.duration_days} days`
+                            : ""}
+
+                          {finalItinerary.travelers
+                            ? ` · ${finalItinerary.travelers} travelers`
+                            : ""}
+                        </p>
+
+                      </div>
+
+                      <div className="rounded-2xl bg-white/10 p-5 sm:min-w-48">
+
+                        <p className="text-xs text-slate-400">
+                          Optimized total
+                        </p>
+
+                        <p className="mt-1 text-2xl font-bold">
+                          {finalItinerary.estimated_total ||
+                            finalItinerary.budget ||
+                            "—"}
+                        </p>
+
+                      </div>
+
+                    </div>
+
+                  </div>
+
+                  {/* FINAL SELECTED OPTIONS */}
+                  {finalItinerary.selected_options && (
+                    <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+
+                      {finalItinerary.selected_options.flight && (
+                        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
+                            <Plane size={18} />
+                          </div>
+
+                          <p className="mt-4 text-xs font-medium text-slate-500">
+                            Selected flight
+                          </p>
+
+                          <p className="mt-1 font-bold">
+                            {
+                              finalItinerary
+                                .selected_options
+                                .flight.airline
+                            }
+                          </p>
+
+                          {finalItinerary
+                            .selected_options
+                            .flight.route && (
+                            <p className="mt-1 text-sm text-slate-500">
+                              {
+                                finalItinerary
+                                  .selected_options
+                                  .flight.route
+                              }
+                            </p>
+                          )}
+
+                          {finalItinerary
+                            .selected_options
+                            .flight.price && (
+                            <p className="mt-3 text-sm font-semibold">
+                              {
+                                finalItinerary
+                                  .selected_options
+                                  .flight.price
+                              }
+                            </p>
+                          )}
+
+                        </div>
+                      )}
+
+                      {finalItinerary.selected_options.hotel && (
+                        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
+                            <Hotel size={18} />
+                          </div>
+
+                          <p className="mt-4 text-xs font-medium text-slate-500">
+                            Selected hotel
+                          </p>
+
+                          <p className="mt-1 font-bold">
+                            {
+                              finalItinerary
+                                .selected_options
+                                .hotel.name
+                            }
+                          </p>
+
+                          {finalItinerary
+                            .selected_options
+                            .hotel.location && (
+                            <p className="mt-1 text-sm text-slate-500">
+                              {
+                                finalItinerary
+                                  .selected_options
+                                  .hotel.location
+                              }
+                            </p>
+                          )}
+
+                          {finalItinerary
+                            .selected_options
+                            .hotel.price && (
+                            <p className="mt-3 text-sm font-semibold">
+                              {
+                                finalItinerary
+                                  .selected_options
+                                  .hotel.price
+                              }
+                            </p>
+                          )}
+
+                        </div>
+                      )}
+
+                      {finalItinerary.selected_options.attractions &&
+                        finalItinerary.selected_options.attractions.length >
+                          0 && (
+                          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
+                              <Compass size={18} />
+                            </div>
+
+                            <p className="mt-4 text-xs font-medium text-slate-500">
+                              Selected places
+                            </p>
+
+                            <p className="mt-1 text-2xl font-bold">
+                              {
+                                finalItinerary
+                                  .selected_options
+                                  .attractions.length
+                              }
+                            </p>
+
+                            <p className="mt-1 text-sm text-slate-500">
+                              attractions included
+                            </p>
+
+                          </div>
+                        )}
+
+                      {finalItinerary.selected_options.activities &&
+                        finalItinerary.selected_options.activities.length >
+                          0 && (
+                          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
+                              <Sparkles size={18} />
+                            </div>
+
+                            <p className="mt-4 text-xs font-medium text-slate-500">
+                              Selected activities
+                            </p>
+
+                            <p className="mt-1 text-2xl font-bold">
+                              {
+                                finalItinerary
+                                  .selected_options
+                                  .activities.length
+                              }
+                            </p>
+
+                            <p className="mt-1 text-sm text-slate-500">
+                              experiences included
+                            </p>
+
+                          </div>
+                        )}
+
+                    </div>
+                  )}
+
+                  {/* FINAL BUDGET */}
+                  {finalItinerary.budget_breakdown &&
+                    finalItinerary.budget_breakdown.length >
+                      0 && (
+                      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+
+                        <div className="mb-5 flex items-center gap-3">
+
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
+                            <CircleDollarSign
+                              size={19}
+                            />
                           </div>
 
                           <div>
 
                             <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                              Stay
+                              Final budget
                             </p>
 
                             <h4 className="text-xl font-bold">
-                              Hotel options
+                              Optimized cost breakdown
                             </h4>
 
                           </div>
 
                         </div>
 
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 
-                          {research.hotels.map(
-                            (hotel, index) => {
-
-                              const selected =
-                                selectedHotel?.name ===
-                                hotel.name;
-
-                              return (
-                                <div
-                                  key={`${hotel.name}-${index}`}
-                                  className={`rounded-2xl border bg-white p-5 transition ${
-                                    selected
-                                      ? "border-slate-950 ring-2 ring-slate-950/10"
-                                      : "border-slate-200"
-                                  }`}
-                                >
-
-                                  <div className="flex items-start justify-between gap-3">
-
-                                    <div>
-
-                                      <h5 className="font-bold">
-                                        {hotel.name ||
-                                          "Hotel option"}
-                                      </h5>
-
-                                      {hotel.location && (
-                                        <p className="mt-1 text-xs text-slate-500">
-                                          {hotel.location}
-                                        </p>
-                                      )}
-
-                                    </div>
-
-                                    {selected && (
-                                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white">
-                                        <Check size={14} />
-                                      </div>
-                                    )}
-
-                                  </div>
-
-                                  {hotel.rating && (
-                                    <p className="mt-3 text-sm font-semibold">
-                                      Rating:{" "}
-                                      {hotel.rating}
-                                    </p>
-                                  )}
-
-                                  {hotel.price && (
-                                    <p className="mt-2 text-sm font-semibold text-slate-700">
-                                      Source-listed price:{" "}
-                                      {hotel.price}
-                                    </p>
-                                  )}
-
-                                  {hotel.description && (
-                                    <p className="mt-3 text-sm leading-6 text-slate-600">
-                                      {hotel.description}
-                                    </p>
-                                  )}
-
-                                  <div className="mt-5 flex flex-wrap gap-2">
-
-                                    <button
-                                      onClick={() =>
-                                        setSelectedHotel(
-                                          selected
-                                            ? null
-                                            : hotel
-                                        )
-                                      }
-                                      className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                                        selected
-                                          ? "bg-slate-200 text-slate-900"
-                                          : "bg-slate-950 text-white hover:bg-slate-800"
-                                      }`}
-                                    >
-                                      {selected
-                                        ? "Selected"
-                                        : "Select hotel"}
-                                    </button>
-
-                                    {hotel.source_url && (
-                                      <a
-                                        href={
-                                          hotel.source_url
-                                        }
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                                      >
-                                        View source
-                                      </a>
-                                    )}
-
-                                  </div>
-
-                                </div>
-                              );
-                            }
-                          )}
-
-                        </div>
-
-                      </div>
-                    )}
-
-                  {/* FLIGHTS */}
-                  {research.flights &&
-                    research.flights.length > 0 && (
-                      <div>
-
-                        <div className="mb-4 flex items-center gap-3">
-
-                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white">
-                            <Plane size={19} />
-                          </div>
-
-                          <div>
-
-                            <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                              Air travel
-                            </p>
-
-                            <h4 className="text-xl font-bold">
-                              Flight options
-                            </h4>
-
-                          </div>
-
-                        </div>
-
-                        <div className="grid gap-4 lg:grid-cols-2">
-
-                          {research.flights.map(
-                            (flight, index) => {
-
-                              const selected =
-                                selectedFlight?.airline ===
-                                  flight.airline &&
-                                selectedFlight?.route ===
-                                  flight.route;
-
-                              return (
-                                <div
-                                  key={`${flight.airline}-${flight.route}-${index}`}
-                                  className={`rounded-2xl border bg-white p-5 ${
-                                    selected
-                                      ? "border-slate-950 ring-2 ring-slate-950/10"
-                                      : "border-slate-200"
-                                  }`}
-                                >
-
-                                  <div className="flex items-start justify-between gap-4">
-
-                                    <div>
-
-                                      <h5 className="font-bold">
-                                        {flight.airline ||
-                                          "Flight option"}
-                                      </h5>
-
-                                      {flight.route && (
-                                        <p className="mt-1 text-sm text-slate-600">
-                                          {flight.route}
-                                        </p>
-                                      )}
-
-                                    </div>
-
-                                    {selected && (
-                                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-950 text-white">
-                                        <Check size={14} />
-                                      </div>
-                                    )}
-
-                                  </div>
-
-                                  <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
-
-                                    {flight.duration && (
-                                      <p className="text-slate-600">
-                                        <span className="font-semibold text-slate-900">
-                                          Duration:
-                                        </span>{" "}
-                                        {
-                                          flight.duration
-                                        }
-                                      </p>
-                                    )}
-
-                                    {flight.stops && (
-                                      <p className="text-slate-600">
-                                        <span className="font-semibold text-slate-900">
-                                          Stops:
-                                        </span>{" "}
-                                        {flight.stops}
-                                      </p>
-                                    )}
-
-                                    {flight.price && (
-                                      <p className="text-slate-600">
-                                        <span className="font-semibold text-slate-900">
-                                          Price:
-                                        </span>{" "}
-                                        {flight.price}
-                                      </p>
-                                    )}
-
-                                    {flight.baggage && (
-                                      <p className="text-slate-600">
-                                        <span className="font-semibold text-slate-900">
-                                          Baggage:
-                                        </span>{" "}
-                                        {flight.baggage}
-                                      </p>
-                                    )}
-
-                                  </div>
-
-                                  <div className="mt-5 flex flex-wrap gap-2">
-
-                                    <button
-                                      onClick={() =>
-                                        setSelectedFlight(
-                                          selected
-                                            ? null
-                                            : flight
-                                        )
-                                      }
-                                      className={`rounded-xl px-4 py-2 text-sm font-semibold ${
-                                        selected
-                                          ? "bg-slate-200 text-slate-900"
-                                          : "bg-slate-950 text-white hover:bg-slate-800"
-                                      }`}
-                                    >
-                                      {selected
-                                        ? "Selected"
-                                        : "Select flight"}
-                                    </button>
-
-                                    {flight.source_url && (
-                                      <a
-                                        href={
-                                          flight.source_url
-                                        }
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                                      >
-                                        View source
-                                      </a>
-                                    )}
-
-                                  </div>
-
-                                </div>
-                              );
-                            }
-                          )}
-
-                        </div>
-
-                      </div>
-                    )}
-
-                  {/* ATTRACTIONS */}
-                  {research.attractions &&
-                    research.attractions.length > 0 && (
-                      <div>
-
-                        <div className="mb-4">
-
-                          <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                            Places
-                          </p>
-
-                          <h4 className="text-xl font-bold">
-                            Attractions
-                          </h4>
-
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-
-                          {research.attractions.map(
+                          {finalItinerary.budget_breakdown.map(
                             (
-                              attraction,
-                              index
-                            ) => {
-
-                              const selected =
-                                selectedAttractions.some(
-                                  (item) =>
-                                    item.name ===
-                                    attraction.name
-                                );
-
-                              return (
-                                <div
-                                  key={`${attraction.name}-${index}`}
-                                  className={`rounded-2xl border bg-white p-5 ${
-                                    selected
-                                      ? "border-slate-950 ring-2 ring-slate-950/10"
-                                      : "border-slate-200"
-                                  }`}
-                                >
-
-                                  <div className="flex items-start justify-between gap-3">
-
-                                    <h5 className="font-bold">
-                                      {attraction.name ||
-                                        "Attraction"}
-                                    </h5>
-
-                                    {selected && (
-                                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white">
-                                        <Check size={14} />
-                                      </div>
-                                    )}
-
-                                  </div>
-
-                                  {attraction.description && (
-                                    <p className="mt-3 text-sm leading-6 text-slate-600">
-                                      {
-                                        attraction.description
-                                      }
-                                    </p>
-                                  )}
-
-                                  <div className="mt-4 space-y-2 text-xs text-slate-500">
-
-                                    {attraction.ticket_price && (
-                                      <p>
-                                        Ticket:{" "}
-                                        {
-                                          attraction.ticket_price
-                                        }
-                                      </p>
-                                    )}
-
-                                    {attraction.opening_info && (
-                                      <p>
-                                        Opening:{" "}
-                                        {
-                                          attraction.opening_info
-                                        }
-                                      </p>
-                                    )}
-
-                                    {attraction.recommended_time && (
-                                      <p>
-                                        Recommended time:{" "}
-                                        {
-                                          attraction.recommended_time
-                                        }
-                                      </p>
-                                    )}
-
-                                  </div>
-
-                                  <div className="mt-5 flex flex-wrap gap-2">
-
-                                    <button
-                                      onClick={() =>
-                                        toggleAttraction(
-                                          attraction
-                                        )
-                                      }
-                                      className={`rounded-xl px-4 py-2 text-sm font-semibold ${
-                                        selected
-                                          ? "bg-slate-200 text-slate-900"
-                                          : "bg-slate-950 text-white hover:bg-slate-800"
-                                      }`}
-                                    >
-                                      {selected
-                                        ? "Selected"
-                                        : "Select place"}
-                                    </button>
-
-                                    {attraction.source_url && (
-                                      <a
-                                        href={
-                                          attraction.source_url
-                                        }
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                                      >
-                                        Source
-                                      </a>
-                                    )}
-
-                                  </div>
-
-                                </div>
-                              );
-                            }
-                          )}
-
-                        </div>
-
-                      </div>
-                    )}
-
-                  {/* ACTIVITIES */}
-                  {research.activities &&
-                    research.activities.length > 0 && (
-                      <div>
-
-                        <div className="mb-4">
-
-                          <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                            Experiences
-                          </p>
-
-                          <h4 className="text-xl font-bold">
-                            Tours & activities
-                          </h4>
-
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-2">
-
-                          {research.activities.map(
-                            (
-                              activity,
-                              index
-                            ) => {
-
-                              const selected =
-                                selectedActivities.some(
-                                  (item) =>
-                                    item.name ===
-                                    activity.name
-                                );
-
-                              return (
-                                <div
-                                  key={`${activity.name}-${index}`}
-                                  className={`rounded-2xl border bg-white p-5 ${
-                                    selected
-                                      ? "border-slate-950 ring-2 ring-slate-950/10"
-                                      : "border-slate-200"
-                                  }`}
-                                >
-
-                                  <div className="flex items-start justify-between gap-3">
-
-                                    <h5 className="font-bold">
-                                      {activity.name ||
-                                        "Activity"}
-                                    </h5>
-
-                                    {selected && (
-                                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white">
-                                        <Check size={14} />
-                                      </div>
-                                    )}
-
-                                  </div>
-
-                                  {activity.description && (
-                                    <p className="mt-3 text-sm leading-6 text-slate-600">
-                                      {
-                                        activity.description
-                                      }
-                                    </p>
-                                  )}
-
-                                  {activity.price && (
-                                    <p className="mt-3 text-sm font-semibold text-slate-700">
-                                      Source-listed price:{" "}
-                                      {activity.price}
-                                    </p>
-                                  )}
-
-                                  <div className="mt-5 flex flex-wrap gap-2">
-
-                                    <button
-                                      onClick={() =>
-                                        toggleActivity(
-                                          activity
-                                        )
-                                      }
-                                      className={`rounded-xl px-4 py-2 text-sm font-semibold ${
-                                        selected
-                                          ? "bg-slate-200 text-slate-900"
-                                          : "bg-slate-950 text-white hover:bg-slate-800"
-                                      }`}
-                                    >
-                                      {selected
-                                        ? "Selected"
-                                        : "Select activity"}
-                                    </button>
-
-                                    {activity.source_url && (
-                                      <a
-                                        href={
-                                          activity.source_url
-                                        }
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                                      >
-                                        Source
-                                      </a>
-                                    )}
-
-                                  </div>
-
-                                </div>
-                              );
-                            }
-                          )}
-
-                        </div>
-
-                      </div>
-                    )}
-
-                  {/* RESTAURANTS */}
-                  {research.restaurants &&
-                    research.restaurants.length > 0 && (
-                      <div>
-
-                        <div className="mb-4">
-
-                          <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                            Food
-                          </p>
-
-                          <h4 className="text-xl font-bold">
-                            Restaurant options
-                          </h4>
-
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-
-                          {research.restaurants.map(
-                            (
-                              restaurant,
+                              item,
                               index
                             ) => (
                               <div
-                                key={`${restaurant.name}-${index}`}
-                                className="rounded-2xl border border-slate-200 bg-white p-5"
+                                key={index}
+                                className="rounded-xl bg-slate-50 p-4"
                               >
 
-                                <h5 className="font-bold">
-                                  {restaurant.name ||
-                                    "Restaurant"}
-                                </h5>
+                                <p className="text-xs capitalize text-slate-500">
+                                  {item.category ||
+                                    "Other"}
+                                </p>
 
-                                {restaurant.description && (
-                                  <p className="mt-3 text-sm leading-6 text-slate-600">
-                                    {
-                                      restaurant.description
-                                    }
-                                  </p>
-                                )}
-
-                                {restaurant.price_level && (
-                                  <p className="mt-3 text-xs font-semibold text-slate-500">
-                                    Price level:{" "}
-                                    {
-                                      restaurant.price_level
-                                    }
-                                  </p>
-                                )}
-
-                                {restaurant.source_url && (
-                                  <a
-                                    href={
-                                      restaurant.source_url
-                                    }
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="mt-4 inline-flex rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                                  >
-                                    View source
-                                  </a>
-                                )}
+                                <p className="mt-1 font-semibold">
+                                  {item.estimated_cost ||
+                                    "—"}
+                                </p>
 
                               </div>
                             )
@@ -1878,67 +2552,109 @@ export default function Home() {
                       </div>
                     )}
 
-                  {/* TRANSPORT */}
-                  {research.transport &&
-                    research.transport.length > 0 && (
-                      <div>
+                  {/* FINAL DAY BY DAY */}
+                  {finalItinerary.itinerary &&
+                    finalItinerary.itinerary.length >
+                      0 && (
+                      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
 
-                        <div className="mb-4">
+                        <div className="mb-6">
 
                           <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                            Getting around
+                            Optimized plan
                           </p>
 
-                          <h4 className="text-xl font-bold">
-                            Transport options
+                          <h4 className="mt-1 text-2xl font-bold">
+                            Your final itinerary
                           </h4>
+
+                          <p className="mt-2 text-sm text-slate-500">
+                            Your selected options have been
+                            arranged into a more practical trip.
+                          </p>
 
                         </div>
 
-                        <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-5">
 
-                          {research.transport.map(
-                            (
-                              transport,
-                              index
-                            ) => (
+                          {finalItinerary.itinerary.map(
+                            (day) => (
                               <div
-                                key={`${transport.name}-${index}`}
-                                className="rounded-2xl border border-slate-200 bg-white p-5"
+                                key={day.day}
+                                className="rounded-2xl border border-slate-200 p-5"
                               >
 
-                                <h5 className="font-bold">
-                                  {transport.name ||
-                                    "Transport option"}
-                                </h5>
+                                <div className="flex gap-4">
 
-                                {transport.description && (
-                                  <p className="mt-3 text-sm leading-6 text-slate-600">
-                                    {
-                                      transport.description
-                                    }
-                                  </p>
-                                )}
+                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-950 text-sm font-bold text-white">
+                                    {day.day}
+                                  </div>
 
-                                {transport.price && (
-                                  <p className="mt-3 text-sm font-semibold text-slate-700">
-                                    Source-listed price:{" "}
-                                    {transport.price}
-                                  </p>
-                                )}
+                                  <div className="min-w-0 flex-1">
 
-                                {transport.source_url && (
-                                  <a
-                                    href={
-                                      transport.source_url
-                                    }
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="mt-4 inline-flex rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                                  >
-                                    View source
-                                  </a>
-                                )}
+                                    <h5 className="text-lg font-bold">
+                                      {day.title}
+                                    </h5>
+
+                                    <div className="mt-4 space-y-3">
+
+                                      {day.activities?.map(
+                                        (
+                                          activity,
+                                          index
+                                        ) => (
+                                          <div
+                                            key={index}
+                                            className="rounded-xl bg-slate-50 p-4"
+                                          >
+
+                                            <div className="flex gap-3">
+
+                                              <Check
+                                                size={16}
+                                                className="mt-1 shrink-0"
+                                              />
+
+                                              <div>
+
+                                                {activity.time && (
+                                                  <p className="text-xs font-semibold text-slate-400">
+                                                    {activity.time}
+                                                  </p>
+                                                )}
+
+                                                <p className="mt-1 text-sm leading-6 text-slate-700">
+                                                  {
+                                                    activity.activity
+                                                  }
+                                                </p>
+
+                                                {activity.estimated_cost &&
+                                                  activity.estimated_cost !==
+                                                    "0" &&
+                                                  activity.estimated_cost !==
+                                                    "Rs. 0" && (
+                                                    <p className="mt-1 text-xs font-medium text-slate-500">
+                                                      Estimated cost:{" "}
+                                                      {
+                                                        activity.estimated_cost
+                                                      }
+                                                    </p>
+                                                  )}
+
+                                              </div>
+
+                                            </div>
+
+                                          </div>
+                                        )
+                                      )}
+
+                                    </div>
+
+                                  </div>
+
+                                </div>
 
                               </div>
                             )
@@ -1949,25 +2665,28 @@ export default function Home() {
                       </div>
                     )}
 
-                  {/* TRAVEL TIPS */}
-                  {research.travel_tips &&
-                    research.travel_tips.length > 0 && (
-                      <div className="rounded-2xl border border-slate-200 bg-white p-6">
+                  {/* OPTIMIZATION NOTES */}
+                  {finalItinerary.optimization_notes &&
+                    finalItinerary.optimization_notes.length >
+                      0 && (
+                      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
 
                         <div className="flex items-center gap-3">
 
                           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
-                            <Sparkles size={19} />
+                            <Sparkles
+                              size={19}
+                            />
                           </div>
 
                           <div>
 
                             <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                              Research notes
+                              AI decisions
                             </p>
 
                             <h4 className="font-bold">
-                              Travel tips
+                              What TripPilot optimized
                             </h4>
 
                           </div>
@@ -1976,17 +2695,23 @@ export default function Home() {
 
                         <ul className="mt-5 space-y-3">
 
-                          {research.travel_tips.map(
-                            (tip, index) => (
+                          {finalItinerary.optimization_notes.map(
+                            (
+                              note,
+                              index
+                            ) => (
                               <li
                                 key={index}
                                 className="flex gap-3 text-sm leading-6 text-slate-600"
                               >
+
                                 <Check
                                   size={16}
                                   className="mt-1 shrink-0"
                                 />
-                                {tip}
+
+                                {note}
+
                               </li>
                             )
                           )}
@@ -1996,90 +2721,51 @@ export default function Home() {
                       </div>
                     )}
 
-                  {/* SELECTION SUMMARY */}
-                  {(selectedHotel ||
-                    selectedFlight ||
-                    selectedAttractions.length >
-                      0 ||
-                    selectedActivities.length >
-                      0) && (
-                    <div className="rounded-2xl border border-slate-950 bg-slate-950 p-6 text-white">
+                  {/* FINAL TRAVEL NOTES */}
+                  {finalItinerary.travel_notes &&
+                    finalItinerary.travel_notes.length >
+                      0 && (
+                      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
 
-                      <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-                        Your selections
-                      </p>
+                        <h4 className="font-bold">
+                          Final travel notes
+                        </h4>
 
-                      <h4 className="mt-2 text-xl font-bold">
-                        Ready to build your final trip
-                      </h4>
+                        <ul className="mt-4 space-y-2">
 
-                      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          {finalItinerary.travel_notes.map(
+                            (
+                              note,
+                              index
+                            ) => (
+                              <li
+                                key={index}
+                                className="text-sm leading-6 text-slate-600"
+                              >
+                                • {note}
+                              </li>
+                            )
+                          )}
 
-                        {selectedFlight && (
-                          <div className="rounded-xl bg-white/10 p-4">
-                            <p className="text-xs text-slate-400">
-                              Flight
-                            </p>
-                            <p className="mt-1 text-sm font-semibold">
-                              {selectedFlight.airline ||
-                                "Selected flight"}
-                            </p>
-                          </div>
-                        )}
-
-                        {selectedHotel && (
-                          <div className="rounded-xl bg-white/10 p-4">
-                            <p className="text-xs text-slate-400">
-                              Hotel
-                            </p>
-                            <p className="mt-1 text-sm font-semibold">
-                              {selectedHotel.name ||
-                                "Selected hotel"}
-                            </p>
-                          </div>
-                        )}
-
-                        {selectedAttractions.length >
-                          0 && (
-                          <div className="rounded-xl bg-white/10 p-4">
-                            <p className="text-xs text-slate-400">
-                              Places
-                            </p>
-                            <p className="mt-1 text-sm font-semibold">
-                              {
-                                selectedAttractions.length
-                              }{" "}
-                              selected
-                            </p>
-                          </div>
-                        )}
-
-                        {selectedActivities.length >
-                          0 && (
-                          <div className="rounded-xl bg-white/10 p-4">
-                            <p className="text-xs text-slate-400">
-                              Activities
-                            </p>
-                            <p className="mt-1 text-sm font-semibold">
-                              {
-                                selectedActivities.length
-                              }{" "}
-                              selected
-                            </p>
-                          </div>
-                        )}
+                        </ul>
 
                       </div>
+                    )}
 
-                      <p className="mt-5 text-sm leading-6 text-slate-400">
-                        Selection is saved in this trip session.
-                        The next step will send these choices
-                        back to the AI so it can optimize the
-                        final itinerary around your budget.
-                      </p>
+                  <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
 
-                    </div>
-                  )}
+                    <p className="text-sm font-semibold text-amber-900">
+                      Planning estimate
+                    </p>
+
+                    <p className="mt-1 text-sm leading-6 text-amber-800">
+                      Prices, schedules and availability can
+                      change. TripPilot has not booked anything.
+                      Confirm final details with the original
+                      travel provider before payment.
+                    </p>
+
+                  </div>
 
                 </div>
               )}
@@ -2130,7 +2816,7 @@ export default function Home() {
                 number: "03",
                 title: "Optimize everything",
                 description:
-                  "The AI can use your selections and budget to build a personalized final itinerary.",
+                  "TripPilot sends your selections back to AI and builds a final itinerary around your budget.",
               },
             ].map((item) => (
 
@@ -2204,7 +2890,9 @@ export default function Home() {
                 </div>
 
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100">
-                  <CircleDollarSign size={20} />
+                  <CircleDollarSign
+                    size={20}
+                  />
                 </div>
 
               </div>
@@ -2286,3 +2974,14 @@ export default function Home() {
     </main>
   );
 }
+
+
+
+
+
+
+
+
+
+
+

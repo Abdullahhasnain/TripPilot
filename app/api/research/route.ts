@@ -1,28 +1,263 @@
- import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import Firecrawl from "@mendable/firecrawl-js";
-import Groq from "groq-sdk";
-
-type SearchSource = {
-  title: string;
-  url: string;
-  description: string;
-};
-
-type SuccessfulSource = {
-  title: string;
-  url: string;
-  content: string;
-};
 
 const firecrawl = new Firecrawl({
   apiKey: process.env.FIRECRAWL_API_KEY,
 });
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+const SEARCHES = [
+  {
+    category: "hotels",
+    query: (destination: string) =>
+      `${destination} hotels prices per night`,
+  },
+  {
+    category: "flights",
+    query: (destination: string) =>
+      `Karachi to ${destination} flights prices PKR`,
+  },
+  {
+    category: "attractions",
+    query: (destination: string) =>
+      `${destination} attractions ticket prices`,
+  },
+  {
+    category: "activities",
+    query: (destination: string) =>
+      `${destination} tours activities prices`,
+  },
+  {
+    category: "restaurants",
+    query: (destination: string) =>
+      `${destination} restaurants prices`,
+  },
+  {
+    category: "transport",
+    query: (destination: string) =>
+      `${destination} airport metro taxi prices`,
+  },
+  {
+    category: "travel",
+    query: (destination: string) =>
+      `${destination} visa requirements Pakistani passport`,
+  },
+];
 
-export async function POST(request: NextRequest) {
+type SimpleSource = {
+  title: string;
+  description: string;
+  url: string;
+};
+
+type SearchGroup = {
+  category: string;
+  result: {
+    web?: unknown[];
+  } | null;
+};
+
+const cleanText = (
+  text: string,
+  maxLength = 120
+): string => {
+  const cleaned = text
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[[^\]]*\]/g, "")
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/[#*_`~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) {
+    return "";
+  }
+
+  if (cleaned.length <= maxLength) {
+    return cleaned;
+  }
+
+  return `${cleaned.slice(0, maxLength).trim()}...`;
+};
+
+const getPrice = (
+  source: SimpleSource
+): string | null => {
+  const combined =
+    `${source.title} ${source.description}`;
+
+  /*
+    Only accept actual currency + number combinations.
+
+    Examples accepted:
+    PKR 57,390
+    AED 20
+    Rs. 5,000
+    $40
+    USD 213
+    €50
+
+    Examples rejected:
+    rs,
+    2026
+    2025
+    Ticket: rs
+  */
+
+  const matches = combined.matchAll(
+    /(?:PKR|AED|Rs\.?|USD|US\$|\$|€|£)\s*([\d,]+(?:\.\d+)?)/gi
+  );
+
+  for (const match of matches) {
+    const fullMatch = match[0];
+    const numericText = match[1];
+
+    if (!numericText) {
+      continue;
+    }
+
+    const numericValue = Number(
+      numericText.replace(/,/g, "")
+    );
+
+    if (!Number.isFinite(numericValue)) {
+      continue;
+    }
+
+    /*
+      Reject years accidentally detected as prices.
+      This prevents things like "Rs 2026" when 2026
+      is actually part of a travel article title.
+    */
+    if (
+      Number.isInteger(numericValue) &&
+      numericValue >= 1900 &&
+      numericValue <= 2100
+    ) {
+      continue;
+    }
+
+    return fullMatch.trim();
+  }
+
+  return null;
+};
+
+const getSources = (
+  results: SearchGroup[],
+  category: string
+): SimpleSource[] => {
+  const output: SimpleSource[] = [];
+
+  for (const item of results) {
+    if (item.category !== category) {
+      continue;
+    }
+
+    const webResults = item.result?.web;
+
+    if (!Array.isArray(webResults)) {
+      continue;
+    }
+
+    for (const source of webResults.slice(0, 3)) {
+      if (!source || typeof source !== "object") {
+        continue;
+      }
+
+      const data =
+        source as Record<string, unknown>;
+
+      const url =
+        typeof data.url === "string"
+          ? data.url.trim()
+          : "";
+
+      if (!url) {
+        continue;
+      }
+
+      const title =
+        typeof data.title === "string"
+          ? data.title.trim()
+          : "";
+
+      const description =
+        typeof data.description === "string"
+          ? data.description.trim()
+          : "";
+
+      output.push({
+        title,
+        description,
+        url,
+      });
+    }
+  }
+
+  return output;
+};
+
+const createSources = (
+  results: SearchGroup[]
+) => {
+  const seen = new Set<string>();
+
+  return results.flatMap((item) => {
+    const webResults = item.result?.web;
+
+    if (!Array.isArray(webResults)) {
+      return [];
+    }
+
+    return webResults
+      .slice(0, 3)
+      .map((source) => {
+        if (
+          !source ||
+          typeof source !== "object"
+        ) {
+          return null;
+        }
+
+        const data =
+          source as Record<string, unknown>;
+
+        const url =
+          typeof data.url === "string"
+            ? data.url.trim()
+            : "";
+
+        if (!url || seen.has(url)) {
+          return null;
+        }
+
+        seen.add(url);
+
+        const title =
+          typeof data.title === "string"
+            ? cleanText(data.title, 100)
+            : "Travel source";
+
+        return {
+          title: title || "Travel source",
+          url,
+        };
+      })
+      .filter(
+        (
+          source
+        ): source is {
+          title: string;
+          url: string;
+        } => source !== null
+      );
+  });
+};
+
+export async function POST(
+  request: NextRequest
+) {
   try {
     const body = await request.json();
 
@@ -51,309 +286,240 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!process.env.GROQ_API_KEY) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "GROQ_API_KEY is missing.",
-        },
-        { status: 500 }
+    /*
+      Run all travel research searches in parallel.
+    */
+    const results: SearchGroup[] =
+      await Promise.all(
+        SEARCHES.map(async (search) => {
+          try {
+            const result =
+              await firecrawl.search(
+                search.query(destination),
+                {
+                  limit: 3,
+                }
+              );
+
+            return {
+              category: search.category,
+              result,
+            };
+          } catch (error) {
+            console.error(
+              `Search failed: ${search.category}`,
+              error
+            );
+
+            return {
+              category: search.category,
+              result: null,
+            };
+          }
+        })
       );
-    }
 
-    const queries = [
-      `${destination} hotels prices`,
-      `${destination} best hotels`,
-      `${destination} attractions ticket prices`,
-      `${destination} things to do tours prices`,
-      `${destination} restaurants`,
-      `${destination} public transport airport transport`,
-      `${destination} travel visa requirements`,
-    ];
+    /*
+      Hotels
+    */
+    const hotels = getSources(
+      results,
+      "hotels"
+    ).map((source) => ({
+      name:
+        cleanText(source.title, 90) ||
+        "Hotel option",
 
-    const searchResults = await Promise.all(
-      queries.map(async (query) => {
-        try {
-          const result = await firecrawl.search(query, {
-            limit: 5,
-          });
+      location: destination,
 
-          return result;
-        } catch (error) {
-          console.error(`Firecrawl search failed for "${query}":`, error);
-          return null;
-        }
-      })
-    );
+      rating: null,
 
-    const sourceMap = new Map<string, SearchSource>();
+      price: getPrice(source),
 
-    for (const result of searchResults) {
-      if (!result || !Array.isArray(result.web)) {
-        continue;
-      }
+      description:
+        cleanText(
+          source.description,
+          120
+        ) ||
+        "Hotel information found from travel research.",
 
-      for (const item of result.web) {
-        if (!item || typeof item !== "object") {
-          continue;
-        }
+      source_url: source.url,
+    }));
 
-        if (!("url" in item)) {
-          continue;
-        }
+    /*
+      Flights
+    */
+    const flights = getSources(
+      results,
+      "flights"
+    ).map((source) => ({
+      airline:
+        cleanText(source.title, 90) ||
+        "Flight option",
 
-        const url =
-          typeof item.url === "string"
-            ? item.url
-            : "";
+      route:
+        `Karachi → ${destination}`,
 
-        if (!url) {
-          continue;
-        }
+      duration: null,
 
-        const title =
-          "title" in item && typeof item.title === "string"
-            ? item.title
-            : "Untitled source";
+      stops: null,
 
-        const description =
-          "description" in item &&
-          typeof item.description === "string"
-            ? item.description
-            : "";
+      price: getPrice(source),
 
-        if (!sourceMap.has(url)) {
-          sourceMap.set(url, {
-            title,
-            url,
-            description,
-          });
-        }
-      }
-    }
+      baggage: null,
 
-    const sources = Array.from(sourceMap.values()).slice(0, 10);
+      source_url: source.url,
+    }));
 
-    if (sources.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Firecrawl did not return any usable sources.",
-        },
-        { status: 502 }
-      );
-    }
+    /*
+      Attractions
+    */
+    const attractions = getSources(
+      results,
+      "attractions"
+    ).map((source) => ({
+      name:
+        cleanText(source.title, 90) ||
+        "Attraction option",
 
-    const successfulSources: SuccessfulSource[] = [];
+      description:
+        cleanText(
+          source.description,
+          120
+        ) ||
+        "Attraction information found from travel research.",
 
-    for (const source of sources) {
-      try {
-        const scraped = await firecrawl.scrape(source.url, {
-          formats: ["markdown"],
-        });
+      ticket_price:
+        getPrice(source),
 
-        if (!scraped || typeof scraped !== "object") {
-          continue;
-        }
+      opening_info: null,
 
-        const markdown =
-          "markdown" in scraped &&
-          typeof scraped.markdown === "string"
-            ? scraped.markdown
-            : "";
+      recommended_time: null,
 
-        if (!markdown.trim()) {
-          continue;
-        }
+      source_url: source.url,
+    }));
 
-        successfulSources.push({
-          title: source.title,
-          url: source.url,
-          content: markdown.slice(0, 1500),
-        });
-      } catch (error) {
-        console.error(
-          `Firecrawl scrape failed for ${source.url}:`,
-          error
-        );
-      }
-    }
+    /*
+      Activities
+    */
+    const activities = getSources(
+      results,
+      "activities"
+    ).map((source) => ({
+      name:
+        cleanText(source.title, 90) ||
+        "Activity option",
 
-    if (successfulSources.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Firecrawl could not scrape any usable sources.",
-        },
-        { status: 502 }
-      );
-    }
+      description:
+        cleanText(
+          source.description,
+          120
+        ) ||
+        "Activity information found from travel research.",
 
-    const researchInput = successfulSources
-      .map(
-        (source, index) =>
-          `SOURCE ${index + 1}
-TITLE: ${source.title}
-URL: ${source.url}
+      price: getPrice(source),
 
-CONTENT:
-${source.content}`
+      source_url: source.url,
+    }));
+
+    /*
+      Restaurants
+    */
+    const restaurants = getSources(
+      results,
+      "restaurants"
+    ).map((source) => ({
+      name:
+        cleanText(source.title, 90) ||
+        "Restaurant option",
+
+      description:
+        cleanText(
+          source.description,
+          120
+        ) ||
+        "Restaurant information found from travel research.",
+
+      price_level: null,
+
+      source_url: source.url,
+    }));
+
+    /*
+      Transport
+    */
+    const transport = getSources(
+      results,
+      "transport"
+    ).map((source) => ({
+      name:
+        cleanText(source.title, 90) ||
+        "Transport option",
+
+      description:
+        cleanText(
+          source.description,
+          120
+        ) ||
+        "Transport information found from travel research.",
+
+      price: getPrice(source),
+
+      source_url: source.url,
+    }));
+
+    /*
+      Visa / travel tips
+    */
+    const travel_tips = getSources(
+      results,
+      "travel"
+    )
+      .map((source) =>
+        cleanText(
+          source.description,
+          160
+        )
       )
-      .join("\n\n-------------------------\n\n");
+      .filter(Boolean);
 
-    const completion = await groq.chat.completions.create({
-      model: "openai/gpt-oss-20b",
-      temperature: 0.1,
-      response_format: {
-        type: "json_object",
-      },
-      messages: [
-        {
-          role: "system",
-          content: `
-You are a professional travel research assistant.
+    /*
+      Final structured research object
+    */
+    const research = {
+      destination,
+      hotels,
+      flights,
+      attractions,
+      activities,
+      restaurants,
+      transport,
+      travel_tips,
+    };
 
-Your job is to analyze web research collected by Firecrawl for a travel destination.
-
-Important rules:
-
-1. Use ONLY information supported by the provided sources.
-2. Do not invent prices, ratings, opening hours, addresses, airlines, hotels, restaurants, or transport information.
-3. If a price is not available, use null rather than inventing one.
-4. Clearly distinguish estimated information from verified information.
-5. Preserve source URLs so the user can inspect the original information.
-6. Do not claim that something is live, available, bookable, or guaranteed unless the source explicitly supports that claim.
-7. Keep the output practical for a travel-planning application.
-8. Use simple clean English.
-9. Avoid strange Unicode characters and unnecessary special symbols.
-10. Return valid JSON only.
-
-Return this structure:
-
-{
-  "destination": "string",
-  "hotels": [
-    {
-      "name": "string",
-      "location": "string",
-      "rating": "string or null",
-      "price": "string or null",
-      "description": "string",
-      "source_url": "string"
-    }
-  ],
-  "flights": [
-    {
-      "airline": "string",
-      "route": "string",
-      "duration": "string or null",
-      "stops": "string or null",
-      "price": "string or null",
-      "baggage": "string or null",
-      "source_url": "string"
-    }
-  ],
-  "attractions": [
-    {
-      "name": "string",
-      "description": "string",
-      "ticket_price": "string or null",
-      "opening_info": "string or null",
-      "recommended_time": "string or null",
-      "source_url": "string"
-    }
-  ],
-  "activities": [
-    {
-      "name": "string",
-      "description": "string",
-      "price": "string or null",
-      "source_url": "string"
-    }
-  ],
-  "restaurants": [
-    {
-      "name": "string",
-      "description": "string",
-      "price_level": "string or null",
-      "source_url": "string"
-    }
-  ],
-  "transport": [
-    {
-      "name": "string",
-      "description": "string",
-      "price": "string or null",
-      "source_url": "string"
-    }
-  ],
-  "travel_tips": [
-    "string"
-  ]
-}
-
-Return up to 5 useful items per category when the sources support them.
-If the sources do not contain enough information for a category, return an empty array.
-          `,
-        },
-        {
-          role: "user",
-          content: `
-Destination:
-${destination}
-
-Firecrawl research:
-
-${researchInput}
-          `,
-        },
-      ],
-    });
-
-    const content = completion.choices[0]?.message?.content;
-
-    if (!content) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Groq returned an empty research response.",
-        },
-        { status: 502 }
-      );
-    }
-
-    let research: unknown;
-
-    try {
-      research = JSON.parse(content);
-    } catch {
-      console.error("Invalid research JSON:", content);
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Groq returned invalid research JSON.",
-        },
-        { status: 502 }
-      );
-    }
+    /*
+      Unique source list for the frontend.
+    */
+    const sources =
+      createSources(results);
 
     return NextResponse.json({
       success: true,
       destination,
       research,
-      sources: successfulSources.map((source) => ({
-        title: source.title,
-        url: source.url,
-      })),
+      sources,
     });
   } catch (error) {
-    console.error("Research API error:", error);
+    console.error(
+      "Research API error:",
+      error
+    );
 
     return NextResponse.json(
       {
         success: false,
-        error: "Research request failed.",
+        error:
+          "Research request failed.",
       },
       { status: 500 }
     );
